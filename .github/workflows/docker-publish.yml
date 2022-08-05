@@ -10,7 +10,7 @@ on:
       - store/dockerfiles/**
 jobs:
   push:
-    name: "dockerimages:${{ matrix.game }}"
+    name: "dockerfiles:${{ matrix.game }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
