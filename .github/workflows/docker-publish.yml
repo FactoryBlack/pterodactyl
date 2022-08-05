@@ -37,4 +37,4 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/FactoryBlack/dockerfiles:${{ matrix.game }}
+            ghcr.io/moonub/dockerfiles:${{ matrix.game }}
