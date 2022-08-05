@@ -10,7 +10,7 @@ on:
       - store/dockerfiles/**
 jobs:
   push:
-    name: "dockerimages:${{ matrix.game }}"
+    name: "dockerfiles:${{ matrix.game }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -33,7 +33,7 @@ jobs:
       - uses: docker/build-push-action@v2
         with:
           context: ./store/dockerfiles/${{ matrix.game }}
-          file: ./games/${{ matrix.game }}/Dockerfile
+          file: ./store/dockerfiles/${{ matrix.game }}/Dockerfile
           platforms: linux/amd64
           push: true
           tags: |
