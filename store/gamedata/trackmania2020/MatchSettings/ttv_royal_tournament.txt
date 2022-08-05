@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<playlist>
+  <gameinfos>
+    <game_mode>0</game_mode>
+    <script_name>Trackmania/TM_Royal_Custom</script_name>
+  </gameinfos>
+  <startindex>0</startindex>
+  <map>
+    <file>MX/39761_Donut_Land.Map.Gbx</file>
+    <ident>nJnSnXZiObIwp3_QtevZ5OuILIa</ident>
+  </map>
+</playlist>

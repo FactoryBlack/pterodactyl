@@ -1,0 +1,698 @@
+/**
+*	Royal Time Attack mode
+*/
+#Extends "Libs/Nadeo/TMNext/TrackMania/Modes/TMNextBase.Script.txt"
+
+#Const CompatibleMapTypes	"TrackMania\\TM_Royal,TM_Royal"
+#Const Version						"2021-06-02-evo1.0.0" //modified 2021-12-26
+#Const ScriptName					"Evo Royal TA"
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Libraries
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Include "TextLib" as TL
+#Include "Libs/Nadeo/TMNext/TrackMania/Modes/RoyalTimeAttack/RoyalTimeAttack.Script.txt" as RoyalTimeAttack
+#Include "Libs/Nadeo/TMNext/TrackMania/Modes/RoyalTimeAttack/StateManager.Script.txt" as StateMgr
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Checkpoint_Server.Script.txt" as UIModules_Checkpoint
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/PauseMenuOnline_Server.Script.txt" as UIModules_PauseMenu_Online
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/ScoresTable_Server.Script.txt" as UIModules_ScoresTable
+#Include "Libs/Nadeo/ModeLibs/Legacy/XmlRpc2.Script.txt" as XmlRpc
+#Include "ManiaApps/Nadeo/TMxSM/Race/UIModules/Chrono_Server.Script.txt" as UIModules_Chrono
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Settings
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Setting S_TimeLimit 150 as _("Time limit") //< Time limit before going to the next map
+#Setting S_ScriptEnvironment "development"
+#Setting S_OutroDuration 750
+#Setting S_UsePvECollisions True
+#Setting S_PracMode True
+
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Constants
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Const C_ModeName "Evo Royal TA"
+//L16N [Royal Time Attack] Description of the mode rules
+#Const Description _("""Players must complete as many segments as possible as quickly as possible. Modified version by Evo.""")
+
+#Const C_HudModulePath "" //< Path to the hud module
+#Const C_ManiaAppUrl "file://Media/ManiaApps/Nadeo/TMNext/TrackMania/RoyalTimeAttack/RoyalTimeAttack.Script.txt" //< Url of the mania app
+#Const C_FakeUsersNb 0
+#Const C_EmptyArmorCheckInterval 250 //< Frequency of the empty armor check
+
+#Const C_TotalSegments 5
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Callbacks
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+#Const C_Callback_Royal_PlayerFinish "Royal.PlayerFinish"
+#Const C_Callback_Royal_PlayerFinishSegment "Royal.PlayerFinishSegment"
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Functions
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+Void XmlRpcSendRoyalPlayerFinish(CSmPlayer _Player, Integer _Time, Integer _TotalSegments) {
+    declare Response = """{
+    "login": {{{XmlRpc::JsonGetText(_Player.User.Login)}}},
+    "racetime": {{{XmlRpc::JsonGetInteger(_Time)}}},
+    "totalsegments": {{{XmlRpc::JsonGetInteger(_TotalSegments)}}}
+}""";
+    XmlRpc::SendCallback(C_Callback_Royal_PlayerFinish, [Response]);
+}
+
+Void XmlRpcSendRoyalPlayerFinishSegment(CSmPlayer _Player, Integer _Time, Integer _SegmentCount) {
+    declare Integer CurrentSegment = (_SegmentCount - 1) % C_TotalSegments + 1;
+    declare Response = """{
+    "login": {{{XmlRpc::JsonGetText(_Player.User.Login)}}},
+    "racetime": {{{XmlRpc::JsonGetInteger(_Time)}}},
+    "segment": {{{XmlRpc::JsonGetInteger(CurrentSegment)}}},
+    "totalsegments": {{{XmlRpc::JsonGetInteger(_SegmentCount)}}}
+}""";
+    XmlRpc::SendCallback(C_Callback_Royal_PlayerFinishSegment, [Response]);
+}
+
+Integer GetSegmentCount(CSmPlayer _Player) {
+    declare Integer[] RoyalTimeAttack_SegmentTimes for _Player.Score = [];
+    return RoyalTimeAttack_SegmentTimes.count;
+}
+
+// These Incrementer functions are Helper functions used to check spawning/event conditions
+// this will allow a repeating black cycle without interfering with the score handling etc.
+Integer Incrementer(Integer _Increment, CSmScore _Score) {
+    declare Integer RoyalTimeAttack_Incrementer for _Score;
+    RoyalTimeAttack_Incrementer += _Increment;
+    return RoyalTimeAttack_Incrementer;
+}
+
+// Gets the current incrementer value
+Integer GetIncrementer(CSmScore _Score) {
+    declare Integer RoyalTimeAttack_Incrementer for _Score;
+    return RoyalTimeAttack_Incrementer;
+}
+
+// Resets the current incrementer value
+Void ResetIncrementer(CSmScore _Score) {
+    declare Integer RoyalTimeAttack_Incrementer for _Score;
+    RoyalTimeAttack_Incrementer = 0;
+}
+
+Void SetIncrementer(Integer _Increment, CSmScore _Score) {
+    declare Integer RoyalTimeAttack_Incrementer for _Score;
+    RoyalTimeAttack_Incrementer = _Increment;
+}
+
+
+Void CheckRoyalRacetime(CSmPlayer _Player, Integer _RaceTime, Integer _MapStartTime) {
+    declare Integer RoyalTimeAttack_FirstSegmentStartTime for _Player.Score;
+    declare Integer MapTime = _Player.StartTime - RoyalTimeAttack_FirstSegmentStartTime + _RaceTime;
+
+    declare Integer SegmentCount = GetSegmentCount(_Player);
+
+    Log::Log("""
+    Segment Count: {{{SegmentCount}}}
+    Map Time: {{{MapTime}}}
+    Race Time: {{{_RaceTime}}}
+    Map Start Time: {{{_MapStartTime}}}
+    Player Start Time: {{{_Player.StartTime}}},
+    Player FirstSeg Start Time: {{{RoyalTimeAttack_FirstSegmentStartTime}}},
+""");
+
+    // Only send the RoyalPlayerFinish event once (when finishing white to black)
+    // do not send it again after repeating the black cycle 5 times
+    if (SegmentCount % C_TotalSegments == 0 && GetIncrementer(_Player.Score) <= C_TotalSegments) {
+        XmlRpcSendRoyalPlayerFinish(_Player, MapTime, SegmentCount);
+        Log::Log("Player finished the whole map.");
+        Log::Log("""Time spent: {{{MapTime}}}""");
+    }
+
+    XmlRpcSendRoyalPlayerFinishSegment(_Player, MapTime, SegmentCount);
+}
+
+Void SetPlayerStartTime(CSmPlayer _Player) {
+    declare Integer SegmentCount = GetSegmentCount(_Player);
+
+    Log::Log("""[SetPlayerStartTime] Segment Count: {{{SegmentCount}}}""");
+
+ 
+    if (SegmentCount % C_TotalSegments == 0 && GetIncrementer(_Player.Score) == 0) {
+        declare Integer RoyalTimeAttack_FirstSegmentStartTime for _Player.Score;
+        RoyalTimeAttack_FirstSegmentStartTime = Now;
+
+        // Timer UI netwrite
+        declare UI <=> UIManager.GetUI(_Player);
+        declare netwrite Integer Net_FirstSegmentStart for _Player;
+        Net_FirstSegmentStart = Now;
+
+        Log::Log("""RoyalTimeAttack_FirstSegmentStartTime = {{{RoyalTimeAttack_FirstSegmentStartTime}}}""");
+    }
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Extends
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+***Match_LogVersions***
+***
+Log::RegisterScript(ScriptName, Version);
+Log::RegisterScript(StateMgr::ScriptName, StateMgr::Version);
+Log::RegisterScript(UIModules_Checkpoint::ScriptName, UIModules_Checkpoint::Version);
+Log::RegisterScript(UIModules_PauseMenu_Online::ScriptName, UIModules_PauseMenu_Online::Version);
+Log::RegisterScript(UIModules_ScoresTable::ScriptName, UIModules_ScoresTable::Version);
+Log::RegisterScript(RoyalTimeAttack::ScriptName, RoyalTimeAttack::Version);
+***
+
+***Match_LoadLibraries***
+***
+StateMgr::Load();
+RoyalTimeAttack::Load();
+
+// register xmlrpc callbacks
+XmlRpc::RegisterCallback(C_Callback_Royal_PlayerFinish, """
+* Name: {{{C_Callback_Royal_PlayerFinish}}}
+* Type: CallbackArray
+* Description: Callback sent when a player finishes all segments.
+* Data:
+    - Version >=2.0.0:
+    ```
+    [
+        {
+            "login": "player-login", // The login id of the player
+            "racetime" 12345, // the time the player took from first segment to last.
+            "totalsegments": 1234 // the total number of segments the player has finished
+        }
+    ]
+    ```
+""");
+
+XmlRpc::RegisterCallback(C_Callback_Royal_PlayerFinishSegment, """
+* Name: {{{C_Callback_Royal_PlayerFinishSegment}}}
+* Type: CallbackArray
+* Description: Callback sent when a player finishes all segments.
+* Data:
+    - Version >=2.0.0:
+    ```
+    [
+        {
+            "login": "player-login", // The login id of the player
+            "racetime" 12345 // the time the player took to the current segment
+            "segment": <n> // The current segment the player finished where 1 <= n <= 5
+            "totalsegments": 1234 // the total number of segments the player has finished
+        }
+    ]
+    ```
+""");
+***
+
+***Match_UnloadLibraries***
+***
+RoyalTimeAttack::Unload();
+StateMgr::Unload();
+***
+
+***Match_Settings***
+***
+MB_Settings_UseDefaultHud = (C_HudModulePath == "");
+MB_Settings_UseDefaultTimer = False;
+***
+
+***Match_Rules***
+***
+ModeInfo::SetName(C_ModeName);
+ModeInfo::SetType(ModeInfo::C_Type_FreeForAll);
+ModeInfo::SetRules(Description);
+ModeInfo::SetStatusMessage("");
+***
+
+***Match_LoadHud***
+***
+if (C_HudModulePath != "") Hud_Load(C_HudModulePath);
+***
+
+***Match_AfterLoadHud***
+***
+ClientManiaAppUrl = C_ManiaAppUrl;
+Race::SortScores(Race::C_Sort_TotalPoints);
+UIModules_PauseMenu_Online::SetHelp(Description);
+UIModules_ScoresTable::SetScoreMode(UIModules_ScoresTable::C_Mode_RaceProgression);
+UIModules_Checkpoint::SetVisibleFor(UIModules_Checkpoint::C_Target_None);
+***
+
+***Match_Yield***
+***
+foreach (Event in PendingEvents) {
+    switch (Event.Type) {
+        // Initialize players when they join the server
+        case CSmModeEvent::EType::OnPlayerAdded: {
+            StateMgr::InitializePlayer(Event.Player);
+            RoyalTimeAttack::InitializePlayer(Event.Player);
+        }
+    }
+}
+
+StateMgr::Yield();
+RoyalTimeAttack::Yield();
+***
+
+***Match_StartServer***
+***
+// Initialize mode
+Clans::SetClansNb(0);
+Race::SetRespawnBehaviour(Race::C_RespawnBehaviour_Custom);
+StateMgr::ForcePlayersStates([StateMgr::C_State_Waiting]);
+WarmUp::SetAvailability(False);
+CarRank::Reset();
+
+// Initialize network
+CrudeExtrapolation_AllowDelay = True; //< Allow a delay on the opponents position to get a better extrapolation
+***
+
+***Match_InitMap***
+***
+declare CMapLandmark[] Map_Starts;
+declare Integer Map_NextEmptyArmorCheckTime;
+
+// Find start blocks
+{
+    declare CMapLandmark[] Starts = Map::GetStarts();
+    declare CMapLandmark[Integer] SortedStarts;
+    foreach (Start in Starts) {
+        SortedStarts[Start.Order] = Start;
+    }
+    SortedStarts = SortedStarts.sortkey();
+    foreach (Start in SortedStarts) {
+        Map_Starts.add(Start);
+    }
+    
+    if (Map_Starts.count > 0) {
+        Map::SetDefaultStart(Map_Starts[0]);
+    }
+}
+
+CarRank::Reset();
+UsePvECollisions = S_UsePvECollisions;
+***
+
+***Match_StartMap***
+***
+// Add bot when necessary
+Users_SetNbFakeUsers(C_FakeUsersNb, 0);
+
+foreach (Player in Players) {
+    declare Integer PrevSegmentController for Player;
+    declare Boolean PrevMode for Player;
+}
+
+// Reset race progression
+foreach (Score in Scores) {
+    RoyalTimeAttack::ResetSegmentTimes(Score);
+    ResetIncrementer(Score);
+}
+
+if (Map_Starts.count > 0) {
+    Layers::Create("Timer", """
+    <manialink version="3" name="RoyalWithPracModeUI">
+    <label z-index="1" size="40 10" halign="center" valign="center" pos="-9 -100" textsize="10" text="00:00.00" class="text-number" id="timer" textfont="OswaldMono" textcolor="FFD700" scale="0.45" translate="0"/>
+    <label z-index="1" size="40 10" halign="center" valign="center" pos="8 -100" textsize="10" text="--:--.--" class="text-number" id="racetime" textfont="OswaldMono" textcolor="A679FFFF" scale="0.45" translate="0"/>
+    <frame pos="0 13" id="segments">
+        <label pos="-41 67" size="20 5" text="White" halign="center" valign="center" textfont="OswaldMono" style="TextButtonBig" scriptevents="1" textsize="5" id="white"/>
+        <label pos="-21 67" size="20 5" text="Green" halign="center" valign="center" textfont="OswaldMono" style="TextButtonBig" scriptevents="1" textsize="5" id="green"/>
+        <label pos="-1 67" size="20 5" text="Blue" halign="center" valign="center" textfont="OswaldMono" style="TextButtonBig" scriptevents="1" textsize="5" id="blue"/>
+        <label pos="19 67" size="20 5" text="Red" halign="center" valign="center" textfont="OswaldMono" style="TextButtonBig" scriptevents="1" textsize="5" id="red"/>
+        <label pos="39 67" size="20 5" text="Black" halign="center" valign="center" textfont="OswaldMono" style="TextButtonBig" scriptevents="1" textsize="5" id="black"/>
+    </frame>
+    <label pos="-36 -87" z-index="0" size="40 10" focusareacolor1="FFFFFF00" focusareacolor2="9AA4A413" text="Enter Practice Mode" textfont="OswaldMono" halign="center" valign="center" scriptevents="1" id="enterPrac"/>
+    <label pos="-36 -87" z-index="0" size="40 10" focusareacolor1="FFFFFF00" focusareacolor2="9AA4A413" text="Exit Practice Mode" textfont="OswaldMono" halign="center" valign="center" scriptevents="1" id="exitPrac"/>
+    <script><!--
+    #Include "TextLib" as TL
+    #Include "MathLib" as ML
+    
+
+    CSmPlayer GetPlayer() {
+        if (GUIPlayer != Null) return GUIPlayer;
+        return InputPlayer;
+      }
+
+    main() {
+        declare CMlLabel Timer <=> (Page.GetFirstChild("timer") as CMlLabel);
+        declare CMlLabel RaceTime <=> (Page.GetFirstChild("racetime") as CMlLabel);
+        declare CMlFrame Segments <=> (Page.GetFirstChild("segments") as CMlFrame);
+        declare CMlLabel EnterPractice <=> (Page.GetFirstChild("enterPrac") as CMlLabel);
+        declare CMlLabel ExitPractice <=> (Page.GetFirstChild("exitPrac") as CMlLabel);
+
+        ExitPractice.Hide();
+        Segments.Hide();
+        
+
+        declare Vec3[] SegmentColors = [
+            <1.0, 1.0, 1.0>,
+            <57.0 / 255, 174.0 / 255, 88.0 / 255>,
+            <50.0 / 225, 130.0 / 255, 206.0 / 255>,
+            <235.0 / 255, 64.0 / 255, 52.0 / 255>,
+            <44.0 / 255, 41.0 / 255, 40.0 / 255>
+        ];
+
+        declare CSmPlayer Player <=> GetPlayer();
+
+        declare netwrite Boolean PracticeMode for UI;
+        PracticeMode = False;
+        declare netwrite Integer SegmentController for UI;
+        SegmentController = 0;
+
+
+        RaceTime.SetText("NewText");
+
+        AnimMgr.Add(Timer, "<label pos=\"-9 -87\" />", 1000, CAnimManager::EAnimManagerEasing::SineInOut);
+        AnimMgr.Add(RaceTime, "<label pos=\"8 -87\" />", 1000, CAnimManager::EAnimManagerEasing::SineInOut);
+
+        while (True) {
+            yield;
+            if (Player != Null) {
+                Player <=> GetPlayer();
+                declare netread Integer Net_FirstSegmentStart for Player;
+                declare netread Integer Net_Incrementer for Player;
+                declare netread Integer Net_RaceTime for Player;
+                declare netwrite Boolean PracticeMode for UI;
+
+                RaceTime.SetText(TL::TimeToText(Net_RaceTime, True, True));
+                RaceTime.TextColor = SegmentColors[ML::Clamp(Net_Incrementer - 1, 0, 4)];
+                
+                Timer.SetText(TL::TimeToText(GameTime - Net_FirstSegmentStart, True));
+
+                foreach (Event in PendingEvents) {
+                    declare netwrite Boolean PracticeMode for UI;
+                    if (Event.Type == CMlScriptEvent::Type::MouseClick) {
+                        declare netwrite Integer SegmentController for UI;
+                        declare netwrite Boolean PracticeMode for UI;
+                        switch (Event.ControlId) {
+                            case "white": {
+                                SegmentController = 0;
+                            }
+                            case "green": {
+                                SegmentController = 1;
+                            }
+                            case "blue": {
+                                SegmentController = 2;
+                            }
+                            case "red": {
+                                SegmentController = 3;
+                            }
+                            case "black": {
+                                SegmentController = 4;
+                            }
+                        }
+
+                        if(Event.ControlId == "exitPrac") {
+                            PracticeMode = False;
+                        } else if (Event.ControlId == "enterPrac") {
+                            PracticeMode = True;
+                        }
+                    }
+                }
+                if(PracticeMode) {
+                    Segments.Show();
+                    ExitPractice.Show();
+                    EnterPractice.Hide();
+                    RaceTime.TextColor = <50.0, 50.0, 50.0>;
+                } else {
+                    //TODO: Spawn player on current segment
+                    Segments.Hide();
+                    ExitPractice.Hide();
+                    EnterPractice.Show();
+                    SegmentController = 0;
+                }
+            
+            }
+        }
+    }
+    --></script>
+    </manialink>
+    """);
+    Layers::Attach("Timer");
+    Layers::SetType("Timer", CUILayer::EUILayerType::Normal);
+    // Initialize race
+    // `Player.StartTime` will always be rounded to the next tenth of a second (9627 -> 9700)
+    // For the first spawn of the map we do this to the `StartTime` too, so both values are synchronized
+    StartTime = ((Now + Race::C_SpawnDuration) / 100 * 100) + 100;
+    if (S_TimeLimit > 0) {
+        EndTime = StartTime + (S_TimeLimit * 1000);
+    } else {
+        EndTime = -1;
+    }
+    Map_NextEmptyArmorCheckTime = StartTime + C_EmptyArmorCheckInterval;
+    UpdateScoresTableHeader(S_TimeLimit);
+    
+    // Spawn players for the race
+    foreach (Player in Players) {
+        if (Race::IsReadyToStart(Player)) {
+            RoyalTimeAttack::Start(Map_Starts, Player, StartTime, StartTime);
+        }
+    }
+    
+    StateMgr::ForcePlayersStates([StateMgr::C_State_Playing]);
+    RoyalTimeAttack::UpdateRanking();
+} else {
+    StartTime = -1;
+    EndTime = -1;
+    StateMgr::ForcePlayersStates([StateMgr::C_State_Waiting]);
+    RoyalTimeAttack::UpdateRanking();
+    
+    //L16N [Royal Time Attack] The current map is not valid, it will be skipped.
+    UIManager.UIAll.QueueMessage(3000, 1, CUIConfig::EMessageDisplay::Big, _("This map is not valid"));
+    MB_Sleep(3000);
+    MB_StopMap();
+}
+***
+
+***Match_PlayLoop***
+***
+// Manage race events
+declare RacePendingEvents = Race::GetPendingEvents();
+foreach (Event in RacePendingEvents) {
+    Race::ValidEvent(Event);
+
+    if (Event.Type == Events::C_Type_StartLine) {
+        Log::Log("""Event: {{{Event.Type}}}""");
+        SetPlayerStartTime(Event.Player);
+    }
+    
+    // Waypoint
+    else if (Event.Type == Events::C_Type_Waypoint) {
+        if (Event.Player != Null) {
+            declare UI <=> UIManager.GetUI(Event.Player);
+            declare netread Boolean PracticeMode for UI;
+            if (Event.IsEndRace && PracticeMode == False) {
+                Incrementer(1, Event.Player.Score);
+                RoyalTimeAttack::CompleteSegment(Event.Player, Event.RaceTime, StartTime);
+                RoyalTimeAttack::ThrottleUpdateRanking();
+                //Race::StopSkipScoresTable(Event.Player);
+                Race::Stop(Event.Player, S_OutroDuration, -1);
+                CheckRoyalRacetime(Event.Player, Event.RaceTime, StartTime);
+                // UI
+                declare netwrite Integer Net_RaceTime for Event.Player;
+                Net_RaceTime = Event.RaceTime;
+                declare netwrite Integer Net_Incrementer for Event.Player;
+                Net_Incrementer = GetIncrementer(Event.Player.Score);
+            } else if (Event.IsEndRace && PracticeMode == True) {
+                // prac mode finish handling
+                //FIXME: 
+                declare netwrite Integer Net_RaceTime for Event.Player;
+                Net_RaceTime = Event.RaceTime;
+            }
+        }
+    }
+
+    
+
+    // handle respawns
+    if (Event.Type == Events::C_Type_GiveUp) {
+        if(Event.Player != Null) {
+            declare UI <=> UIManager.GetUI(Event.Player);
+            declare netread Boolean PracticeMode for UI;
+            if(PracticeMode) {
+                // prac mode
+                declare UI <=> UIManager.GetUI(Event.Player);
+                declare netread Integer SegmentController for UI;
+                Start(Map_Starts[SegmentController], Event.Player, Now + Race::C_SpawnDuration, StartTime);
+            } else {
+                if (CurrentMultiple(Event.Player.Score) > 0) {
+                    declare Integer[] RoyalTimeAttack_SegmentTimes for Event.Player.Score = [];
+                    XmlRpcSendRoyalPlayerFinishSegment(Event.Player, RoyalTimeAttack_SegmentTimes[RoyalTimeAttack_SegmentTimes.count - 1], CurrentMultiple(Event.Player.Score));
+                }
+                RoyalTimeAttack::ThrottleUpdateRanking();
+                ResetSegmentTimesToMultipleOf5(Event.Player.Score);
+                ResetIncrementer(Event.Player.Score);
+                RoyalTimeAttack::Start(Map_Starts, Event.Player, Now + Race::C_SpawnDuration, StartTime);
+            }
+        }
+    }
+
+    if (Event.Type == Events::C_Type_Respawn) {
+        if(Event.Player != Null) {
+            declare UI <=> UIManager.GetUI(Event.Player);
+            declare netread Boolean PracticeMode for UI;
+            if(PracticeMode) {
+                // prac mode
+                declare UI <=> UIManager.GetUI(Event.Player);
+                declare netread Integer SegmentController for UI;
+                Start(Map_Starts[SegmentController], Event.Player, Now + Race::C_SpawnDuration, StartTime);
+            } else {
+                if (GetIncrementer(Event.Player.Score) >= 5) {
+                    Start(Map_Starts[4], Event.Player, Now + Race::C_SpawnDuration, StartTime);
+                } else {
+                    RoyalTimeAttack::Start(Map_Starts, Event.Player, Now + Race::C_SpawnDuration, StartTime);
+                }
+            }
+
+            
+            
+        }
+    }
+}
+
+// Manage mode events
+foreach (Event in PendingEvents) {
+    if (Event.HasBeenPassed || Event.HasBeenDiscarded) continue;
+    Events::Invalid(Event);
+}
+
+
+foreach (Player in Players) {
+    declare UI <=> UIManager.GetUI(Player);
+    declare netread Boolean PracticeMode for UI;
+    if(PracticeMode) {
+        declare UI <=> UIManager.GetUI(Player);
+        declare netread Integer SegmentController for UI;
+        declare Integer PrevSegmentController for Player;
+        
+        if(PrevSegmentController != SegmentController) {
+            Start(Map_Starts[SegmentController], Player, Now + Race::C_SpawnDuration, StartTime);
+            PrevSegmentController = SegmentController;
+        }
+    }
+    declare Boolean PrevMode for Player;
+    if (PrevMode != PracticeMode) {
+        ResetSegmentTimesToMultipleOf5(Player.Score);
+        Start(Map_Starts[0], Player, Now + Race::C_SpawnDuration, StartTime);
+        PrevMode = PracticeMode;
+    }
+}
+
+// Spawn players
+if (PlayersNbDead > 0) { //< Check for unspawned players only if at least one player is unspawned
+    foreach (Player in Players) {
+        if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned && Race::IsReadyToStart(Player)) {
+            declare UI <=> UIManager.GetUI(Player);
+            declare netread Boolean PracticeMode for UI;
+            if(PracticeMode) {
+				declare UI <=> UIManager.GetUI(Player);
+                declare netread Integer SegmentController for UI;
+                Start(Map_Starts[SegmentController], Player, Now + Race::C_SpawnDuration, StartTime);
+            } else {
+                if (GetIncrementer(Player.Score) >= 5) {
+                    Start(Map_Starts[4], Player, Now + Race::C_SpawnDuration, StartTime);
+                } else {
+                    RoyalTimeAttack::Start(Map_Starts, Player, StartTime);
+                }
+            }
+        }
+    }
+}
+
+// Check if a player was eliminated by an obstacle
+if (Now >= Map_NextEmptyArmorCheckTime) {
+    Map_NextEmptyArmorCheckTime = Now + C_EmptyArmorCheckInterval;
+    foreach (Player in Players) {
+        if (
+            Player.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned &&
+            Player.Armor <= 0 &&
+            Race::IsRacing(Player)
+        ) {
+            Race::StopSkipScoresTable(Player);
+        }
+    }
+}
+
+// set the time limit if it has changed
+if (EndTime != StartTime + (S_TimeLimit * 1000)) {
+    if (S_TimeLimit > 0) {
+        EndTime = StartTime + (S_TimeLimit * 1000);
+    } else {
+        EndTime = -1;
+    }
+}
+
+// Stop map if time limit is reached
+if (EndTime > 0 && Now >= EndTime) MB_StopMap();
+***
+
+***Match_EndMap***
+***
+if (Map_Starts.count > 0) {
+    // Ensure that we stop the match (after a vote for the next map, ...)
+    MB_StopMatch();
+    Race::StopSkipOutroAll();
+    EndTime = -1;
+    
+    StateMgr::ForcePlayersStates([StateMgr::C_State_Waiting]);
+    
+    RoyalTimeAttack::UpdateRanking();
+    Race::SortScores(Race::C_Sort_TotalPoints);
+    Scores::SetPlayerWinner(Scores::GetBestPlayer(Scores::C_Sort_MatchPoints));
+} else {
+    MB_SkipPodiumSequence();
+}
+
+// Destroy the attached Timer UI Layer
+Layers::Destroy("Timer");
+***
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// Functions
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+/// Update the info in the scores table header
+Void UpdateScoresTableHeader(Integer _TimeLimit) {
+    if (_TimeLimit > 0) {
+        //L16N [Royal Time Attack] The duration of one map. %1 will be replaced by a duration in minutes and seconds. eg: "Time limit 2:30".
+        UIModules_ScoresTable::SetFooterInfo(TL::Compose(_("Time limit %1"), TL::TimeToText(_TimeLimit * 1000)));
+    } else {
+        UIModules_ScoresTable::SetFooterInfo("");
+    }
+}
+
+
+Integer CurrentMultiple(CSmScore _Score) {
+    declare Integer[] RoyalTimeAttack_SegmentTimes for _Score = [];
+    return RoyalTimeAttack_SegmentTimes.count - RoyalTimeAttack_SegmentTimes.count % 5;
+}
+
+/// Reset the segment times to multiple of 5
+Void ResetSegmentTimesToMultipleOf5(CSmScore _Score) {
+	if (_Score == Null) return;
+	declare Integer[] RoyalTimeAttack_SegmentTimes for _Score = [];
+    // Calculate the numbers of iterations required
+    // then remove the first index until 5 times are left
+    // this will allow players to spawn on the correct start after giving up
+    declare Integer Iterations = RoyalTimeAttack_SegmentTimes.count - CurrentMultiple(_Score);
+    for (i, 1, Iterations) {
+        RoyalTimeAttack_SegmentTimes.removekey(0);
+    }
+    if (RoyalTimeAttack_SegmentTimes.count > 0) {
+        UIModules_ScoresTable::SetRaceProgression(_Score, RoyalTimeAttack_SegmentTimes.count, RoyalTimeAttack_SegmentTimes[RoyalTimeAttack_SegmentTimes.count - 1]);
+    } else {
+        UIModules_ScoresTable::SetRaceProgression(_Score, 0, -1);
+    }
+	
+}
+
+// Slightly altered Start function, allows for spawning on a forced Start block while keeping interactions with 
+// the finish intact
+Void Start(CMapLandmark _Start, CSmPlayer _Player, Integer _PlayerStartTime, Integer _MapStartTime) {
+	if (_Player == Null) return;
+	_Player.LandmarkOrderSelector_Race = _Start.Order;
+	Race::Start(_Player, _Start, _PlayerStartTime);
+	// Use `Player.StartTime` here and not `_PlayerStartTime`
+	// `Player.StartTime` is always rounded to the next tenth of a second
+	// eg: _PlayerStartTime = 9627 -> Player.StartTime = 9700
+	UIModules_Chrono::SetTimeOffset(_Player, _Player.StartTime - _MapStartTime);
+}

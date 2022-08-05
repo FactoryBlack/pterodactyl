@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<playlist>
+  <gameinfos>
+    <script_name>Trackmania/FlagRush</script_name>
+  </gameinfos>
+  <filter>
+    <random_map_order>0</random_map_order>
+  </filter>
+  <mode_script_settings>
+    <setting name="S_UseWarmUp" type="boolean" value="1"/>
+    <setting name="S_UseCollisions" type="boolean" value="0"/>
+    <setting name="S_NbMapsToWinMatch" type="integer" value="1"/>
+    <setting name="S_NbRoundsToWinMap" type="integer" value="2"/>
+    <setting name="S_NbFlagsToWinRound" type="integer" value="3"/>
+    <setting name="S_RoundTimeLimitSeconds" type="integer" value="360"/>
+    <setting name="S_UseTurns" type="boolean" value="0"/>
+    <setting name="S_UseOvertime" type="boolean" value="1"/>
+    <setting name="S_UseReversedBases" type="boolean" value="0"/>
+    <setting name="S_RandomizeFlagSpawn" type="boolean" value="1"/>
+    <setting name="S_FlagInitialSpawnDelaySeconds" type="real" value="0"/>
+    <setting name="S_FlagRespawnDelaySeconds" type="real" value="0"/>
+    <setting name="S_FlagDropStateDurationSeconds" type="real" value="8"/>
+    <setting name="S_FlagStealResistDurationSeconds" type="real" value="1"/>
+    <setting name="S_FlagSameTeamSteal" type="boolean" value="1"/>
+    <setting name="S_FlagCarrierFragile" type="boolean" value="1"/>
+    <setting name="S_FlagCarrierAcceleration" type="real" value="0.7"/>
+    <setting name="S_FlagCarrierControl" type="real" value="1"/>
+    <setting name="S_FlagCarrierAdherence" type="real" value="1"/>
+    <setting name="S_RespawnWhenStill" type="boolean" value="1"/>
+    <setting name="S_RespawnDelay" type="real" value="3"/>
+    <setting name="S_DropFlagPickupPenalty" type="real" value="3"/>
+    <setting name="S_Team1Name" type="text" value=""/>
+    <setting name="S_Team1Color" type="text" value=""/>
+    <setting name="S_Team2Name" type="text" value=""/>
+    <setting name="S_Team2Color" type="text" value=""/>
+    <setting name="S_UseClubTags" type="boolean" value="0"/>
+    <setting name="S_ModeCommands_AdminLoginsCsv" type="text" value=""/>
+  </mode_script_settings>
+  <startindex>0</startindex>
+  <map>
+    <file>MXPacks/1536_/battlebox_(39655).Map.Gbx</file>
+    <ident>6Yb676NxvjPH3h3IEA33gmocUaa</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrush-confluence_(47377).Map.Gbx</file>
+    <ident>yzNQud2G5NF0bIaAidh4SVBamLi</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrush-house-of-death_(46575).Map.Gbx</file>
+    <ident>Jd9JY5tKboJUBd0XD5Bily9GQt9</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrush-the-climb_(51838).Map.Gbx</file>
+    <ident>PEjHz8FjyPtaphT2oOIrdJJsVDk</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrush-valley-tussle_(47366).Map.Gbx</file>
+    <ident>XPJgtq0Z5e3WsTpql5uTd7d79Wi</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushblizzard_(46388).Map.Gbx</file>
+    <ident>I1Eg_3fjb6HNCxb7URdksxfaNR3</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushblock-fort-advanced_(42382).Map.Gbx</file>
+    <ident>aF5teNP60MKZFWISWVzn2fFWNu4</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushcollided_(39651).Map.Gbx</file>
+    <ident>FC7yp6NaOwdLd2wP8DqkM182a_m</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushgoldleaf_(40144).Map.Gbx</file>
+    <ident>A_zMXL0VoXDBivlUKYrWoq59BVj</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushice-derby_(46668).Map.Gbx</file>
+    <ident>33u46T8opUrdfp4F_hystdRc4d7</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushicypalm_(52287).Map.Gbx</file>
+    <ident>zRasQHdHwVVNgGrtfi1VBptOyx8</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushsnakebite_(44662).Map.Gbx</file>
+    <ident>uITFYtlPpUz9iJplDwfIxg63K1e</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushterraformer_(46317).Map.Gbx</file>
+    <ident>R4AHyVquNGXKcM2K6JKRzmhi_43</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushthe-pit_(52173).Map.Gbx</file>
+    <ident>PnvOFFVqMYd7Cnu1prXNQrBXOTk</ident>
+  </map>
+  <map>
+    <file>MXPacks/1536_/flagrushupsidedown-arena_(52107).Map.Gbx</file>
+    <ident>iMDiG9VqRILuxokunxWFxk2M58i</ident>
+  </map>
+</playlist>
